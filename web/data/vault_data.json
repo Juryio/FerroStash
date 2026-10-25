@@ -1,0 +1,56 @@
+[
+  {
+    "id": "minecraft:overworld:145_68_-280",
+    "dimension": "minecraft:overworld",
+    "x": 145,
+    "y": 68,
+    "z": -280,
+    "type": "CHEST",
+    "customTitle": "Clan Erztresor Alpha",
+    "lastOpenedBy": "ShadowKrieger",
+    "lastOpenedTimestamp": 1761391200000,
+    "items": [
+      { "itemId": "minecraft:diamond", "count": 128, "customName": "", "slot": 0 },
+      { "itemId": "minecraft:netherite_ingot", "count": 24, "customName": "Clan Reserve", "slot": 1 },
+      { "itemId": "minecraft:ancient_debris", "count": 36, "customName": "", "slot": 2 },
+      { "itemId": "minecraft:emerald", "count": 512, "customName": "", "slot": 3 },
+      { "itemId": "minecraft:gold_ingot", "count": 256, "customName": "", "slot": 4 },
+      { "itemId": "minecraft:iron_ingot", "count": 1024, "customName": "", "slot": 5 }
+    ]
+  },
+  {
+    "id": "minecraft:the_nether:42_75_118",
+    "dimension": "minecraft:the_nether",
+    "x": 42,
+    "y": 75,
+    "z": 118,
+    "type": "BARREL",
+    "customTitle": "Nether Außenposten Vorräte",
+    "lastOpenedBy": "EnderJury",
+    "lastOpenedTimestamp": 1761392800000,
+    "items": [
+      { "itemId": "minecraft:enchanted_golden_apple", "count": 18, "customName": "Notfall-Äpfel", "slot": 0 },
+      { "itemId": "minecraft:totem_of_undying", "count": 8, "customName": "", "slot": 1 },
+      { "itemId": "minecraft:fire_charge", "count": 64, "customName": "", "slot": 2 },
+      { "itemId": "minecraft:obsidian", "count": 128, "customName": "", "slot": 3 },
+      { "itemId": "minecraft:firework_rocket", "count": 384, "customName": "Flugraketen Stufe 3", "slot": 4 }
+    ]
+  },
+  {
+    "id": "minecraft:the_end:0_60_0",
+    "dimension": "minecraft:the_end",
+    "x": 0,
+    "y": 60,
+    "z": 0,
+    "type": "SHULKER_BOX",
+    "customTitle": "Clan Rüstkammer End",
+    "lastOpenedBy": "Valkyrie99",
+    "lastOpenedTimestamp": 1761394500000,
+    "items": [
+      { "itemId": "minecraft:elytra", "count": 4, "customName": "Clan Elytra Mending", "slot": 0 },
+      { "itemId": "minecraft:netherite_sword", "count": 2, "customName": "Vanguard Klinge", "slot": 1 },
+      { "itemId": "minecraft:netherite_pickaxe", "count": 3, "customName": "Effi V Fortune", "slot": 2 },
+      { "itemId": "minecraft:shulker_shell", "count": 48, "customName": "", "slot": 3 }
+    ]
+  }
+]

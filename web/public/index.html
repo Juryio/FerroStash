@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FerroStash - Clan Vault & Inventur (Minecraft 26.2)</title>
+  <meta name="description" content="Echtzeit Clan-Lagerinventur und Entnahme-Audit für Minecraft Fabric 26.2">
+  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Ambient background glow elements -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+
+  <div class="app-layout">
+    <!-- Top Navigation Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <img src="icon.png" alt="FerroStash Logo" class="brand-logo">
+        <div class="brand-info">
+          <div class="brand-title">
+            <span class="brand-main">FerroStash</span>
+            <span class="version-badge">MC 26.2</span>
+          </div>
+          <span class="clan-name" id="clanNameDisplay">Clan: Iron Vanguard</span>
+        </div>
+      </div>
+
+      <div class="header-center nav-tabs" id="navTabs">
+        <button class="nav-tab active" data-tab="inventory" id="tabBtnInventory">
+          <span class="tab-icon">📦</span> Lagerbestand
+        </button>
+        <button class="nav-tab" data-tab="audit" id="tabBtnAudit">
+          <span class="tab-icon">📜</span> Wer hat was genommen?
+        </button>
+        <button class="nav-tab" data-tab="chests" id="tabBtnChests">
+          <span class="tab-icon">🗄️</span> Kisten-Übersicht
+        </button>
+        <button class="nav-tab" data-tab="setup" id="tabBtnSetup">
+          <span class="tab-icon">⚙️</span> Hosting & Setup
+        </button>
+      </div>
+
+      <div class="header-right">
+        <div class="sync-badge" id="syncStatusBadge">
+          <span class="sync-dot"></span>
+          <span class="sync-text" id="syncStatusText">LIVE SYNC AKTIV</span>
+        </div>
+        <button class="btn-refresh" id="btnRefresh" title="Jetzt manuell aktualisieren">↻</button>
+      </div>
+    </header>
+
+    <!-- Clan Wealth Stats Bar -->
+    <section class="stats-overview">
+      <div class="stat-card stat-netherite">
+        <div class="stat-icon">🛡️</div>
+        <div class="stat-content">
+          <span class="stat-label">Netherite Barren</span>
+          <span class="stat-value" id="statNetherite">0</span>
+        </div>
+      </div>
+      <div class="stat-card stat-diamonds">
+        <div class="stat-icon">💎</div>
+        <div class="stat-content">
+          <span class="stat-label">Diamanten</span>
+          <span class="stat-value" id="statDiamonds">0</span>
+        </div>
+      </div>
+      <div class="stat-card stat-totems">
+        <div class="stat-icon">✨</div>
+        <div class="stat-content">
+          <span class="stat-label">Totems & Elytren</span>
+          <span class="stat-value" id="statRare">0</span>
+        </div>
+      </div>
+      <div class="stat-card stat-containers">
+        <div class="stat-icon">📦</div>
+        <div class="stat-content">
+          <span class="stat-label">Gecachte Kisten</span>
+          <span class="stat-value" id="statChests">0</span>
+        </div>
+      </div>
+      <div class="stat-card stat-items">
+        <div class="stat-icon">📊</div>
+        <div class="stat-content">
+          <span class="stat-label">Gesamte Items</span>
+          <span class="stat-value" id="statTotalItems">0</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Content Container -->
+    <main class="main-content">
+      <!-- 1. TAB: INVENTORY -->
+      <section class="tab-content active" id="tabInventory">
+        <div class="toolbar">
+          <div class="search-input-wrapper">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="searchInput" placeholder="Items suchen (z.B. Diamant, Netherite, Mending, Kistenname)..." autocomplete="off">
+            <button class="clear-search" id="clearSearchBtn" style="display:none;">✕</button>
+          </div>
+
+          <div class="filter-group">
+            <span class="filter-label">Dimension:</span>
+            <div class="filter-pills" id="dimensionFilter">
+              <button class="pill active" data-dim="all">Alle</button>
+              <button class="pill" data-dim="minecraft:overworld">🌍 Overworld</button>
+              <button class="pill" data-dim="minecraft:the_nether">🔥 Nether</button>
+              <button class="pill" data-dim="minecraft:the_end">🌌 End</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="inventory-container">
+          <div class="items-grid" id="itemsGrid">
+            <!-- Dynamically populated items -->
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. TAB: AUDIT LOG -->
+      <section class="tab-content" id="tabAudit">
+        <div class="audit-header-bar">
+          <div class="audit-title-block">
+            <h2>Clan Entnahme- & Einlagerungshistorie</h2>
+            <p class="subtitle">Automatische Protokollierung: Wer hat wann welches Item entnommen oder deponiert?</p>
+          </div>
+          <div class="audit-filter-wrapper">
+            <input type="text" id="auditPlayerFilter" placeholder="Nach Spieler filtern...">
+          </div>
+        </div>
+
+        <div class="audit-timeline" id="auditTimeline">
+          <!-- Dynamically populated audit events -->
+        </div>
+      </section>
+
+      <!-- 3. TAB: CHESTS -->
+      <section class="tab-content" id="tabChests">
+        <div class="chests-header-bar">
+          <h2>Alle registrierten Clankisten</h2>
+          <p class="subtitle">Übersicht aller Clan-Lager mit Standort-Koordinaten.</p>
+        </div>
+
+        <div class="chests-grid" id="chestsGrid">
+          <!-- Dynamically populated chest cards -->
+        </div>
+      </section>
+
+      <!-- 4. TAB: SETUP & GITHUB INSTRUCTIONS -->
+      <section class="tab-content" id="tabSetup">
+        <div class="setup-guide-card">
+          <h2>🚀 Hosting & Synchronisations-Anleitung</h2>
+          <p class="guide-intro">FerroStash bietet zwei flexible Hosting-Möglichkeiten für deinen Clan:</p>
+
+          <div class="guide-columns">
+            <div class="guide-box">
+              <div class="guide-badge">Option A (Kostenlos via GitHub Pages)</div>
+              <h3>Serverless mit GitHub Pages</h3>
+              <ol>
+                <li>Erstelle ein neues GitHub Repository (z.B. <code>mein-clan-vault</code>).</li>
+                <li>Lade den Inhalt des <code>web/</code> Ordners in dieses Repository hoch.</li>
+                <li>Aktiviere unter <strong>Settings -> Pages</strong> den Branch <code>main</code>.</li>
+                <li>Erstelle einen GitHub Personal Access Token (PAT) mit Repo-Rechten.</li>
+                <li>Trage im Minecraft-Spiel (Taste <code>O</code>) im Tab <em>Clan & Sync</em> Repo-Name & Token ein.</li>
+                <li><strong>Fertig!</strong> Das Spiel pusht Updates via GitHub API und deine Seite ist weltweit erreichbar.</li>
+              </ol>
+            </div>
+
+            <div class="guide-box">
+              <div class="guide-badge">Option B (Eigener Server / VPS)</div>
+              <h3>Self-Hosted mit Node.js & Docker</h3>
+              <ol>
+                <li>Kopiere den <code>web/</code> Ordner auf deinen Server / VPS.</li>
+                <li>Starte mit Docker: <code>docker compose up -d</code> oder mit Node: <code>npm install && npm start</code>.</li>
+                <li>Der Server lauscht auf Port <code>3000</code> mit REST API Endpunkt <code>POST /api/sync</code>.</li>
+                <li>Trage die Server-URL in deiner <code>config/ferrostash/config.json</code> ein: <code>"http://dein-server:3000/api/sync"</code>.</li>
+                <li>Alle Clanmitglieder mit der Mod synchronisieren ihre Kisten nun in Echtzeit!</li>
+              </ol>
+            </div>
+          </div>
+
+          <div class="ingame-mod-box">
+            <h3>🎮 In-Game Mod Schnellstart</h3>
+            <p>1. Kopiere <code>ferrostash-1.0.0.jar</code> in deinen Minecraft <code>.minecraft/mods</code> Ordner.</p>
+            <p>2. Benötigt: <strong>Fabric Loader (0.19+)</strong> und <strong>Fabric API für 26.2</strong> mit <strong>Java 25+</strong>.</p>
+            <p>3. Drücke im Spiel jederzeit <strong>Taste "O"</strong>, um das Lagermenü zu öffnen und Kisten-Wegpunkte zu aktivieren!</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Modal for Item Details / Chest Locations -->
+    <div class="modal-backdrop" id="modalBackdrop">
+      <div class="modal-card" id="modalCard">
+        <div class="modal-header">
+          <div class="modal-title-wrap">
+            <h3 id="modalItemTitle">Item Details</h3>
+            <span class="modal-count-badge" id="modalItemCount">x0</span>
+          </div>
+          <button class="modal-close" id="modalCloseBtn">✕</button>
+        </div>
+        <div class="modal-body" id="modalBody">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast-notification" id="toastNotification">
+      <span class="toast-icon">📍</span>
+      <span class="toast-message" id="toastMessage">Koordinaten kopiert!</span>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
