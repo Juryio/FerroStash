@@ -103,6 +103,28 @@ function initSearchAndFilters() {
   });
 }
 
+async function fetchGitHubApiJson(filePath, token) {
+  const { owner, repo } = getRepoInfo();
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=main&_t=${Date.now()}`;
+  const headers = { 'Accept': 'application/vnd.github.v3+json' };
+  if (token) headers['Authorization'] = `token ${token}`;
+
+  try {
+    const res = await fetch(apiUrl, { headers, cache: 'no-store' });
+    if (res && res.ok) {
+      const data = await res.json();
+      if (data && data.content) {
+        const clean = data.content.replace(/\s+/g, '');
+        const decoded = decodeURIComponent(escape(atob(clean)));
+        return JSON.parse(decoded);
+      }
+    }
+  } catch (e) {
+    // API network or rate limit fallback
+  }
+  return null;
+}
+
 async function fetchFirstValidJson(urls) {
   let fallback = null;
   for (const url of urls) {
@@ -111,22 +133,49 @@ async function fetchFirstValidJson(urls) {
       if (res && res.ok) {
         const json = await res.json();
         if (Array.isArray(json) && json.length > 0) {
-          return json; // Found populated clan data! Return immediately!
+          return json;
         }
         if (fallback === null && Array.isArray(json)) {
           fallback = json;
         }
       }
-    } catch (e) {
-      // Continue to next candidate
-    }
+    } catch (e) {}
   }
   return fallback || [];
+}
+
+function mergeSettings(newObj) {
+  if (!newObj) return;
+
+  // 1. Zones
+  if (Array.isArray(newObj.zones)) {
+    clanSettings.zones = newObj.zones;
+  }
+
+  // 2. Blacklist: Never overwrite with empty or missing list from stale cache
+  if (Array.isArray(newObj.blacklistedTitles) && newObj.blacklistedTitles.length > 0) {
+    clanSettings.blacklistedTitles = newObj.blacklistedTitles;
+  } else if (!clanSettings.blacklistedTitles || clanSettings.blacklistedTitles.length === 0) {
+    clanSettings.blacklistedTitles = ['inventory', 'enderchest', 'shop'];
+  }
+
+  // 3. Reset Timestamp: keep latest
+  if (newObj.resetTimestamp) {
+    clanSettings.resetTimestamp = Math.max(clanSettings.resetTimestamp || 0, newObj.resetTimestamp);
+  }
+
+  // 4. Private containers filter
+  if (Array.isArray(newObj.privateContainers)) {
+    clanSettings.privateContainers = newObj.privateContainers;
+    const privSet = new Set(newObj.privateContainers);
+    allContainers = allContainers.filter(c => !privSet.has(c.id));
+  }
 }
 
 async function fetchClanData() {
   try {
     const timestamp = Date.now();
+    const token = getAdminGithubToken();
 
     // 1. Try Express REST API first
     const vaultRes = await fetch(`/api/vault?_t=${timestamp}`, { cache: 'no-store' }).catch(() => null);
@@ -140,76 +189,71 @@ async function fetchClanData() {
       }
       updateSyncStatus(true, 'ONLINE (REST API)');
     } else {
-      // 2. Fallback to static JSON files (GitHub Pages Mode with multi-path resolution)
-      let vaultCandidates = [
-        `data/vault_data.json?_t=${timestamp}`,
-        `web/data/vault_data.json?_t=${timestamp}`
-      ];
-      let auditCandidates = [
-        `data/audit_log.json?_t=${timestamp}`,
-        `web/data/audit_log.json?_t=${timestamp}`
-      ];
+      // 2. GitHub Mode: Use live GitHub REST API first (Bypasses Fastly 5-minute CDN cache!)
+      let fetchedVault = null;
+      let fetchedSettings = null;
+      let fetchedAudit = null;
 
-      if (window.location.hostname.includes('github.io')) {
-        const pathParts = window.location.pathname.split('/').filter(Boolean);
-        if (pathParts.length > 0) {
-          const user = window.location.hostname.split('.')[0];
-          const repo = pathParts[0];
-          // Try root data/ first (where mod default pushes), then web/data/, then relative
-          vaultCandidates = [
-            `https://raw.githubusercontent.com/${user}/${repo}/main/data/vault_data.json?_t=${timestamp}`,
-            `https://raw.githubusercontent.com/${user}/${repo}/main/web/data/vault_data.json?_t=${timestamp}`,
-            `data/vault_data.json?_t=${timestamp}`,
-            `web/data/vault_data.json?_t=${timestamp}`
-          ];
-          auditCandidates = [
-            `https://raw.githubusercontent.com/${user}/${repo}/main/data/audit_log.json?_t=${timestamp}`,
-            `https://raw.githubusercontent.com/${user}/${repo}/main/web/data/audit_log.json?_t=${timestamp}`,
-            `data/audit_log.json?_t=${timestamp}`,
-            `web/data/audit_log.json?_t=${timestamp}`
-          ];
-        }
+      if (token) {
+        fetchedVault = await fetchGitHubApiJson('data/vault_data.json', token);
+        fetchedSettings = await fetchGitHubApiJson('data/clan_settings.json', token);
+        fetchedAudit = await fetchGitHubApiJson('data/audit_log.json', token);
       }
 
-      allContainers = await fetchFirstValidJson(vaultCandidates);
-      allAuditEvents = await fetchFirstValidJson(auditCandidates);
-
-      // 3. Fetch clan settings & zones to filter out any private containers
-      let settingsCandidates = [
-        `data/clan_settings.json?_t=${timestamp}`,
-        `web/data/clan_settings.json?_t=${timestamp}`
-      ];
-      if (window.location.hostname.includes('github.io')) {
-        const pathParts = window.location.pathname.split('/').filter(Boolean);
-        if (pathParts.length > 0) {
-          const user = window.location.hostname.split('.')[0];
-          const repo = pathParts[0];
-          settingsCandidates = [
-            `https://raw.githubusercontent.com/${user}/${repo}/main/data/clan_settings.json?_t=${timestamp}`,
-            `https://raw.githubusercontent.com/${user}/${repo}/main/web/data/clan_settings.json?_t=${timestamp}`,
-            `data/clan_settings.json?_t=${timestamp}`
-          ];
-        }
+      if (fetchedVault !== null && Array.isArray(fetchedVault)) {
+        allContainers = fetchedVault;
+      } else {
+        const { owner, repo } = getRepoInfo();
+        let vaultCandidates = [
+          `https://raw.githubusercontent.com/${owner}/${repo}/main/data/vault_data.json?_t=${timestamp}`,
+          `data/vault_data.json?_t=${timestamp}`,
+          `web/data/vault_data.json?_t=${timestamp}`
+        ];
+        allContainers = await fetchFirstValidJson(vaultCandidates);
       }
 
-      for (const sUrl of settingsCandidates) {
-        try {
-          const sRes = await fetch(sUrl, { cache: 'no-store' });
-          if (sRes && sRes.ok) {
-            const setObj = await sRes.json();
-            if (setObj) {
-              clanSettings = setObj;
-              if (setObj.privateContainers && Array.isArray(setObj.privateContainers)) {
-                const privSet = new Set(setObj.privateContainers);
-                allContainers = allContainers.filter(c => !privSet.has(c.id));
+      if (fetchedAudit !== null && Array.isArray(fetchedAudit)) {
+        allAuditEvents = fetchedAudit;
+      } else {
+        const { owner, repo } = getRepoInfo();
+        let auditCandidates = [
+          `https://raw.githubusercontent.com/${owner}/${repo}/main/data/audit_log.json?_t=${timestamp}`,
+          `data/audit_log.json?_t=${timestamp}`,
+          `web/data/audit_log.json?_t=${timestamp}`
+        ];
+        allAuditEvents = await fetchFirstValidJson(auditCandidates);
+      }
+
+      // 3. Settings & Blacklist merging with cache protection
+      if (fetchedSettings !== null && typeof fetchedSettings === 'object') {
+        mergeSettings(fetchedSettings);
+      } else {
+        const { owner, repo } = getRepoInfo();
+        let settingsCandidates = [
+          `https://raw.githubusercontent.com/${owner}/${repo}/main/data/clan_settings.json?_t=${timestamp}`,
+          `data/clan_settings.json?_t=${timestamp}`,
+          `web/data/clan_settings.json?_t=${timestamp}`
+        ];
+        for (const sUrl of settingsCandidates) {
+          try {
+            const sRes = await fetch(sUrl, { cache: 'no-store' });
+            if (sRes && sRes.ok) {
+              const setObj = await sRes.json();
+              if (setObj) {
+                mergeSettings(setObj);
+                break;
               }
             }
-            break;
-          }
-        } catch (e) {}
+          } catch (e) {}
+        }
       }
 
-      updateSyncStatus(true, 'ONLINE (GitHub Pages)');
+      // 4. Global Reset Protection: Filter out any containers from before the reset!
+      if (clanSettings.resetTimestamp && clanSettings.resetTimestamp > 0) {
+        allContainers = allContainers.filter(c => c.lastOpenedTimestamp && c.lastOpenedTimestamp > clanSettings.resetTimestamp);
+      }
+
+      updateSyncStatus(true, 'ONLINE (GitHub Live)');
     }
 
     updateStats();
@@ -217,6 +261,7 @@ async function fetchClanData() {
     renderAuditLog();
     renderChests();
     renderZones();
+    renderBlacklist();
   } catch (err) {
     console.warn('[FerroStash] Fetch error, retrying...', err);
     updateSyncStatus(false, 'VERBINDUNG WIRD GESUCHT');
@@ -692,15 +737,16 @@ function initAdminTokenControls() {
 async function pushFileToGitHub(filePath, contentStr, commitMessage, token) {
   const { owner, repo } = getRepoInfo();
   const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
-  const authHeader = `Bearer ${token}`;
+  const authHeader = `token ${token}`;
 
   let sha = null;
   try {
-    const getRes = await fetch(apiUrl, {
+    const getRes = await fetch(`${apiUrl}?ref=main&_t=${Date.now()}`, {
       headers: {
         'Accept': 'application/vnd.github.v3+json',
         'Authorization': authHeader
-      }
+      },
+      cache: 'no-store'
     });
     if (getRes.ok) {
       const data = await getRes.json();
@@ -739,13 +785,12 @@ async function saveSettingsToGitHub() {
     const contentStr = JSON.stringify(clanSettings, null, 2);
     const commitMsg = 'Update clan settings via Web UI';
 
-    // Push to data/clan_settings.json and web/data/clan_settings.json
+    // Push to data/clan_settings.json (primary source for mod and live API)
     const res1 = await pushFileToGitHub('data/clan_settings.json', contentStr, commitMsg, token);
-    const res2 = await pushFileToGitHub('web/data/clan_settings.json', contentStr, commitMsg, token);
 
-    const ok = (res1 && res1.ok) || (res2 && res2.ok);
-    if (ok) {
+    if (res1 && res1.ok) {
       showToast('✅ Clan-Einstellungen erfolgreich auf GitHub gespeichert!');
+      pushFileToGitHub('web/data/clan_settings.json', contentStr, commitMsg, token).catch(() => null);
       return true;
     } else {
       const failedRes = (res1 && !res1.ok) ? res1 : res2;
@@ -976,9 +1021,11 @@ function initResetControls() {
       try {
         const emptyVaultJson = '[]';
 
-        // 1. Reset vault_data.json on both paths
-        await pushFileToGitHub('data/vault_data.json', emptyVaultJson, 'Global clan vault reset to 0 [by Leader]', token);
-        await pushFileToGitHub('web/data/vault_data.json', emptyVaultJson, 'Global clan vault reset to 0 [by Leader]', token);
+        // 1. Reset vault_data.json on GitHub (primary source)
+        const resV1 = await pushFileToGitHub('data/vault_data.json', emptyVaultJson, 'Global clan vault reset to 0 [by Leader]', token);
+        if (resV1 && resV1.ok) {
+          pushFileToGitHub('web/data/vault_data.json', emptyVaultJson, 'Global clan vault reset to 0 [by Leader]', token).catch(() => null);
+        }
 
         // 2. Update resetTimestamp in clan_settings.json so all clients wipe local cache
         clanSettings.resetTimestamp = Date.now();
