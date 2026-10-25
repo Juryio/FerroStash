@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'web/data/**'
+      - 'data/**'
+      - 'README.md'
   workflow_dispatch:
 
 permissions:
@@ -13,7 +17,7 @@ permissions:
 
 concurrency:
   group: "pages"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -33,7 +37,8 @@ jobs:
           mkdir -p _site
           cp -r web/public/* _site/
           mkdir -p _site/data
-          cp -r web/data/* _site/data/
+          if [ -d "data" ]; then cp -r data/* _site/data/; fi
+          if [ -d "web/data" ]; then cp -n web/data/* _site/data/ 2>/dev/null || true; fi
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
