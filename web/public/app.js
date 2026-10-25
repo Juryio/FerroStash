@@ -93,6 +93,27 @@ function initSearchAndFilters() {
   });
 }
 
+async function fetchFirstValidJson(urls) {
+  let fallback = null;
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (res && res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json) && json.length > 0) {
+          return json; // Found populated clan data! Return immediately!
+        }
+        if (fallback === null && Array.isArray(json)) {
+          fallback = json;
+        }
+      }
+    } catch (e) {
+      // Continue to next candidate
+    }
+  }
+  return fallback || [];
+}
+
 async function fetchClanData() {
   try {
     const timestamp = Date.now();
@@ -109,35 +130,39 @@ async function fetchClanData() {
       }
       updateSyncStatus(true, 'ONLINE (REST API)');
     } else {
-      // 2. Fallback to static JSON files (GitHub Pages Mode with instant raw fetch)
-      let vaultUrl = `data/vault_data.json?_t=${timestamp}`;
-      let auditUrl = `data/audit_log.json?_t=${timestamp}`;
+      // 2. Fallback to static JSON files (GitHub Pages Mode with multi-path resolution)
+      let vaultCandidates = [
+        `data/vault_data.json?_t=${timestamp}`,
+        `web/data/vault_data.json?_t=${timestamp}`
+      ];
+      let auditCandidates = [
+        `data/audit_log.json?_t=${timestamp}`,
+        `web/data/audit_log.json?_t=${timestamp}`
+      ];
 
       if (window.location.hostname.includes('github.io')) {
         const pathParts = window.location.pathname.split('/').filter(Boolean);
         if (pathParts.length > 0) {
           const user = window.location.hostname.split('.')[0];
           const repo = pathParts[0];
-          vaultUrl = `https://raw.githubusercontent.com/${user}/${repo}/main/web/data/vault_data.json?_t=${timestamp}`;
-          auditUrl = `https://raw.githubusercontent.com/${user}/${repo}/main/web/data/audit_log.json?_t=${timestamp}`;
+          // Try root data/ first (where mod default pushes), then web/data/, then relative
+          vaultCandidates = [
+            `https://raw.githubusercontent.com/${user}/${repo}/main/data/vault_data.json?_t=${timestamp}`,
+            `https://raw.githubusercontent.com/${user}/${repo}/main/web/data/vault_data.json?_t=${timestamp}`,
+            `data/vault_data.json?_t=${timestamp}`,
+            `web/data/vault_data.json?_t=${timestamp}`
+          ];
+          auditCandidates = [
+            `https://raw.githubusercontent.com/${user}/${repo}/main/data/audit_log.json?_t=${timestamp}`,
+            `https://raw.githubusercontent.com/${user}/${repo}/main/web/data/audit_log.json?_t=${timestamp}`,
+            `data/audit_log.json?_t=${timestamp}`,
+            `web/data/audit_log.json?_t=${timestamp}`
+          ];
         }
       }
 
-      let staticVault = await fetch(vaultUrl, { cache: 'no-store' }).catch(() => null);
-      if (!staticVault || !staticVault.ok) {
-        staticVault = await fetch(`data/vault_data.json?_t=${timestamp}`, { cache: 'no-store' });
-      }
-      if (staticVault && staticVault.ok) {
-        allContainers = await staticVault.json();
-      }
-
-      let staticAudit = await fetch(auditUrl, { cache: 'no-store' }).catch(() => null);
-      if (!staticAudit || !staticAudit.ok) {
-        staticAudit = await fetch(`data/audit_log.json?_t=${timestamp}`, { cache: 'no-store' });
-      }
-      if (staticAudit && staticAudit.ok) {
-        allAuditEvents = await staticAudit.json();
-      }
+      allContainers = await fetchFirstValidJson(vaultCandidates);
+      allAuditEvents = await fetchFirstValidJson(auditCandidates);
       updateSyncStatus(true, 'ONLINE (GitHub Pages)');
     }
 
