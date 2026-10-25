@@ -20,10 +20,5 @@
     "minecraft:overworld:3648_73_1375",
     "minecraft:overworld:3680_72_1351"
   ],
-  "blacklistedTitles": [
-    "inventory",
-    "enderchest",
-    "shop",
-    "voteurl"
-  ]
+  "resetTimestamp": 1792949245028
 }
