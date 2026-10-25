@@ -95,25 +95,47 @@ function initSearchAndFilters() {
 
 async function fetchClanData() {
   try {
+    const timestamp = Date.now();
+
     // 1. Try Express REST API first
-    const vaultRes = await fetch('/api/vault').catch(() => null);
+    const vaultRes = await fetch(`/api/vault?_t=${timestamp}`, { cache: 'no-store' }).catch(() => null);
     if (vaultRes && vaultRes.ok) {
       const data = await vaultRes.json();
       allContainers = data.containers || [];
-      const auditRes = await fetch('/api/audit');
+      const auditRes = await fetch(`/api/audit?_t=${timestamp}`, { cache: 'no-store' });
       if (auditRes.ok) {
         const aData = await auditRes.json();
         allAuditEvents = aData.events || [];
       }
       updateSyncStatus(true, 'ONLINE (REST API)');
     } else {
-      // 2. Fallback to static JSON files (GitHub Pages Mode)
-      const staticVault = await fetch('data/vault_data.json');
-      if (staticVault.ok) {
+      // 2. Fallback to static JSON files (GitHub Pages Mode with instant raw fetch)
+      let vaultUrl = `data/vault_data.json?_t=${timestamp}`;
+      let auditUrl = `data/audit_log.json?_t=${timestamp}`;
+
+      if (window.location.hostname.includes('github.io')) {
+        const pathParts = window.location.pathname.split('/').filter(Boolean);
+        if (pathParts.length > 0) {
+          const user = window.location.hostname.split('.')[0];
+          const repo = pathParts[0];
+          vaultUrl = `https://raw.githubusercontent.com/${user}/${repo}/main/web/data/vault_data.json?_t=${timestamp}`;
+          auditUrl = `https://raw.githubusercontent.com/${user}/${repo}/main/web/data/audit_log.json?_t=${timestamp}`;
+        }
+      }
+
+      let staticVault = await fetch(vaultUrl, { cache: 'no-store' }).catch(() => null);
+      if (!staticVault || !staticVault.ok) {
+        staticVault = await fetch(`data/vault_data.json?_t=${timestamp}`, { cache: 'no-store' });
+      }
+      if (staticVault && staticVault.ok) {
         allContainers = await staticVault.json();
       }
-      const staticAudit = await fetch('data/audit_log.json');
-      if (staticAudit.ok) {
+
+      let staticAudit = await fetch(auditUrl, { cache: 'no-store' }).catch(() => null);
+      if (!staticAudit || !staticAudit.ok) {
+        staticAudit = await fetch(`data/audit_log.json?_t=${timestamp}`, { cache: 'no-store' });
+      }
+      if (staticAudit && staticAudit.ok) {
         allAuditEvents = await staticAudit.json();
       }
       updateSyncStatus(true, 'ONLINE (GitHub Pages)');
@@ -390,7 +412,7 @@ function openItemDetailsModal(entry) {
   backdrop.classList.add('open');
 }
 
-window.copyCoordinates = function(coords) {
+window.copyCoordinates = function (coords) {
   navigator.clipboard.writeText(coords).then(() => {
     showToast(`Koordinaten kopiert: ${coords}`);
   }).catch(() => {
