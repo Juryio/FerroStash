@@ -163,6 +163,39 @@ async function fetchClanData() {
 
       allContainers = await fetchFirstValidJson(vaultCandidates);
       allAuditEvents = await fetchFirstValidJson(auditCandidates);
+
+      // 3. Fetch clan settings & zones to filter out any private containers
+      let settingsCandidates = [
+        `data/clan_settings.json?_t=${timestamp}`,
+        `web/data/clan_settings.json?_t=${timestamp}`
+      ];
+      if (window.location.hostname.includes('github.io')) {
+        const pathParts = window.location.pathname.split('/').filter(Boolean);
+        if (pathParts.length > 0) {
+          const user = window.location.hostname.split('.')[0];
+          const repo = pathParts[0];
+          settingsCandidates = [
+            `https://raw.githubusercontent.com/${user}/${repo}/main/data/clan_settings.json?_t=${timestamp}`,
+            `https://raw.githubusercontent.com/${user}/${repo}/main/web/data/clan_settings.json?_t=${timestamp}`,
+            `data/clan_settings.json?_t=${timestamp}`
+          ];
+        }
+      }
+
+      for (const sUrl of settingsCandidates) {
+        try {
+          const sRes = await fetch(sUrl, { cache: 'no-store' });
+          if (sRes && sRes.ok) {
+            const setObj = await sRes.json();
+            if (setObj && setObj.privateContainers && Array.isArray(setObj.privateContainers)) {
+              const privSet = new Set(setObj.privateContainers);
+              allContainers = allContainers.filter(c => !privSet.has(c.id));
+            }
+            break;
+          }
+        } catch (e) {}
+      }
+
       updateSyncStatus(true, 'ONLINE (GitHub Pages)');
     }
 
