@@ -212,8 +212,12 @@ function renderInventory() {
   const sortedItems = Array.from(itemMap.values()).sort((a, b) => b.totalCount - a.totalCount);
 
   if (sortedItems.length === 0) {
-    grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-muted);">
-      Keine Items für die ausgewählten Filter gefunden.
+    const emptyMsg = allContainers.length === 0
+      ? '📦 Noch keine Kisten synchronisiert. Öffne Kisten im Spiel mit der FerroStash-Mod, um den Clan-Lagerbestand hier anzuzeigen.'
+      : 'Keine Items für die ausgewählten Filter gefunden.';
+    grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-muted); background: rgba(10, 14, 23, 0.4); border-radius: var(--radius-md); border: 1px dashed var(--border-color);">
+      <div style="font-size: 2.5rem; margin-bottom: 12px;">📦</div>
+      <div style="font-size: 1rem; color: #cbd5e1; max-width: 500px; margin: 0 auto;">${emptyMsg}</div>
     </div>`;
     return;
   }
@@ -253,8 +257,10 @@ function renderAuditLog() {
   }
 
   if (events.length === 0) {
-    timeline.innerHTML = `<div style="text-align: center; padding: 40px; color: var(--text-muted);">
-      Keine Audit-Einträge vorhanden.
+    timeline.innerHTML = `<div style="text-align: center; padding: 60px 20px; color: var(--text-muted); background: rgba(10, 14, 23, 0.4); border-radius: var(--radius-md); border: 1px dashed var(--border-color);">
+      <div style="font-size: 2.5rem; margin-bottom: 12px;">📜</div>
+      <div style="font-size: 1rem; color: #cbd5e1;">Keine Aktivitäten vorhanden.</div>
+      <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 6px;">Wenn Clanmitglieder Kisten öffnen und Gegenstände entnehmen oder deponieren, wird dies hier protokolliert.</div>
     </div>`;
     return;
   }
