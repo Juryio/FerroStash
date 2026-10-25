@@ -3,6 +3,7 @@
 
 let allContainers = [];
 let allAuditEvents = [];
+let clanSettings = { zones: [], privateContainers: [] };
 let currentFilter = 'all';
 let searchQuery = '';
 let auditPlayerFilter = '';
@@ -28,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initSearchAndFilters();
   initModal();
+  initZoneControls();
   fetchClanData();
 
   // Periodic live refresh every 6 seconds
@@ -52,6 +54,10 @@ function initTabs() {
       if (target === 'inventory') document.getElementById('tabInventory').classList.add('active');
       if (target === 'audit') document.getElementById('tabAudit').classList.add('active');
       if (target === 'chests') document.getElementById('tabChests').classList.add('active');
+      if (target === 'zones') {
+        document.getElementById('tabZones').classList.add('active');
+        renderZones();
+      }
       if (target === 'setup') document.getElementById('tabSetup').classList.add('active');
     });
   });
@@ -187,9 +193,12 @@ async function fetchClanData() {
           const sRes = await fetch(sUrl, { cache: 'no-store' });
           if (sRes && sRes.ok) {
             const setObj = await sRes.json();
-            if (setObj && setObj.privateContainers && Array.isArray(setObj.privateContainers)) {
-              const privSet = new Set(setObj.privateContainers);
-              allContainers = allContainers.filter(c => !privSet.has(c.id));
+            if (setObj) {
+              clanSettings = setObj;
+              if (setObj.privateContainers && Array.isArray(setObj.privateContainers)) {
+                const privSet = new Set(setObj.privateContainers);
+                allContainers = allContainers.filter(c => !privSet.has(c.id));
+              }
             }
             break;
           }
@@ -203,6 +212,7 @@ async function fetchClanData() {
     renderInventory();
     renderAuditLog();
     renderChests();
+    renderZones();
   } catch (err) {
     console.warn('[FerroStash] Fetch error, retrying...', err);
     updateSyncStatus(false, 'VERBINDUNG WIRD GESUCHT');
@@ -503,4 +513,151 @@ function formatTimeAgo(timestamp) {
   if (hours < 24) return `vor ${hours} Std`;
   const days = Math.floor(hours / 24);
   return `vor ${days} Tagen`;
+}
+
+// ================= CLAN ZONES MANAGEMENT =================
+
+function initZoneControls() {
+  const btnSave = document.getElementById('btnSaveZone');
+  if (btnSave) {
+    btnSave.addEventListener('click', async () => {
+      const name = document.getElementById('zoneInputName').value.trim() || 'Hauptbasis';
+      const dim = document.getElementById('zoneInputDim').value;
+      const x = parseInt(document.getElementById('zoneInputX').value, 10);
+      const z = parseInt(document.getElementById('zoneInputZ').value, 10);
+      const radius = parseInt(document.getElementById('zoneInputRadius').value, 10) || 250;
+
+      if (isNaN(x) || isNaN(z)) {
+        alert('Bitte gib gültige X- und Z-Koordinaten für das Zentrum der Clan-Zone ein.');
+        return;
+      }
+
+      if (!clanSettings.zones) clanSettings.zones = [];
+      const newZone = {
+        id: 'zone-' + Date.now(),
+        name: name,
+        dimension: dim,
+        centerX: x,
+        centerZ: z,
+        radius: radius
+      };
+
+      clanSettings.zones.push(newZone);
+      await saveSettingsToGitHub();
+      renderZones();
+
+      // Clear input fields
+      document.getElementById('zoneInputName').value = '';
+      document.getElementById('zoneInputX').value = '';
+      document.getElementById('zoneInputZ').value = '';
+    });
+  }
+}
+
+function renderZones() {
+  const container = document.getElementById('zonesListContainer');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const zones = (clanSettings && clanSettings.zones) || [];
+  if (zones.length === 0) {
+    container.innerHTML = `
+      <div style="padding: 28px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border-color); border-radius: var(--radius-md);">
+        <div style="font-size: 2rem; margin-bottom: 8px;">🌐</div>
+        <p style="font-size: 1rem; color: #cbd5e1; margin-bottom: 6px;">Keine Clan-Zonen festgelegt</p>
+        <span style="font-size: 0.85rem;">Trage rechts eure Clan-Basis ein, damit alle Clanmitglieder automatisch denselben Radius synchronisiert bekommen.</span>
+      </div>
+    `;
+    return;
+  }
+
+  zones.forEach((z, idx) => {
+    const card = document.createElement('div');
+    card.style.cssText = 'background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 14px; display: flex; justify-content: space-between; align-items: center;';
+    card.innerHTML = `
+      <div>
+        <div style="font-weight: 600; color: #fff; font-size: 1rem; margin-bottom: 4px;">📍 ${z.name || 'Unbenannte Zone'}</div>
+        <div style="font-size: 0.85rem; color: var(--text-muted);">
+          <span>${z.dimension || 'minecraft:overworld'}</span> • 
+          <span style="color: #6ee7b7;">X: ${z.centerX}, Z: ${z.centerZ}</span> • 
+          <span style="color: #93c5fd;">Radius: ${z.radius}m</span>
+        </div>
+      </div>
+      <button class="btn-delete-zone" data-idx="${idx}" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 0.85rem;">
+        Entfernen
+      </button>
+    `;
+    container.appendChild(card);
+  });
+
+  // Attach delete handlers
+  container.querySelectorAll('.btn-delete-zone').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const idx = parseInt(e.target.getAttribute('data-idx'), 10);
+      if (confirm(`Möchtest du diese Zone wirklich entfernen?`)) {
+        clanSettings.zones.splice(idx, 1);
+        await saveSettingsToGitHub();
+        renderZones();
+      }
+    });
+  });
+}
+
+async function saveSettingsToGitHub() {
+  const tokenInput = document.getElementById('zoneInputToken');
+  const token = (tokenInput && tokenInput.value.trim()) || localStorage.getItem('fs_github_token');
+  if (!token) {
+    alert('Bitte trage unten deinen GitHub Personal Access Token (PAT) ein, um die Zone zu speichern.');
+    return;
+  }
+  localStorage.setItem('fs_github_token', token);
+
+  showToast('Aktualisiere Zonen auf GitHub...');
+
+  try {
+    const owner = 'Juryio';
+    const repo = 'FerroStash';
+    const path = 'data/clan_settings.json';
+    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+
+    // 1. Get SHA of existing file
+    let sha = null;
+    const getRes = await fetch(apiUrl, {
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `token ${token}`
+      }
+    });
+    if (getRes.ok) {
+      const data = await getRes.json();
+      sha = data.sha;
+    }
+
+    // 2. Put updated content
+    const contentStr = JSON.stringify(clanSettings, null, 2);
+    const contentBase64 = btoa(unescape(encodeURIComponent(contentStr)));
+
+    const putRes = await fetch(apiUrl, {
+      method: 'PUT',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `token ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: 'Update clan zones via Web UI',
+        content: contentBase64,
+        sha: sha
+      })
+    });
+
+    if (putRes.ok) {
+      showToast('✅ Clan-Zone erfolgreich auf GitHub gespeichert!');
+    } else {
+      showToast('⚠️ Fehler beim Speichern: Token/Rechte prüfen.');
+    }
+  } catch (err) {
+    console.error('Zone save error', err);
+    showToast('Fehler bei GitHub-Verbindung');
+  }
 }

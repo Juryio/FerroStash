@@ -40,6 +40,9 @@
         <button class="nav-tab" data-tab="chests" id="tabBtnChests">
           <span class="tab-icon">🗄️</span> Kisten-Übersicht
         </button>
+        <button class="nav-tab" data-tab="zones" id="tabBtnZones">
+          <span class="tab-icon">🌐</span> Clan-Zonen
+        </button>
         <button class="nav-tab" data-tab="setup" id="tabBtnSetup">
           <span class="tab-icon">⚙️</span> Hosting & Setup
         </button>
@@ -151,7 +154,65 @@
         </div>
       </section>
 
-      <!-- 4. TAB: SETUP & GITHUB INSTRUCTIONS -->
+      <!-- 4. TAB: CLAN ZONES -->
+      <section class="tab-content" id="tabZones">
+        <div class="chests-header-bar">
+          <h2>🌐 Clan-Zonen & Radius-Verwaltung</h2>
+          <p class="subtitle">Lege hier eure Clan-Zonen fest. Nur Kisten innerhalb dieses Radius werden standardmäßig synchronisiert. Alle Clanmitglieder laden diese Zonen automatisch beim Start der Mod.</p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 20px;">
+          <!-- Active Zones List -->
+          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 24px;">
+            <h3 style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px;"><span>📍</span> Aktive Clan-Zonen</h3>
+            <div id="zonesListContainer" style="display: flex; flex-direction: column; gap: 12px;">
+              <!-- Dynamically populated zones -->
+            </div>
+          </div>
+
+          <!-- Add Zone Form -->
+          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 24px;">
+            <h3 style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px;"><span>➕</span> Neue Clan-Zone festlegen</h3>
+            <div style="display: flex; flex-direction: column; gap: 14px;">
+              <div>
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 4px;">Zonen-Name (z.B. Hauptbasis)</label>
+                <input type="text" id="zoneInputName" placeholder="Hauptbasis" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: #fff;">
+              </div>
+              <div>
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 4px;">Dimension</label>
+                <select id="zoneInputDim" style="width: 100%; padding: 10px; background: #0f172a; border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: #fff;">
+                  <option value="minecraft:overworld">🌍 Overworld</option>
+                  <option value="minecraft:the_nether">🔥 Nether</option>
+                  <option value="minecraft:the_end">🌌 The End</option>
+                </select>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div>
+                  <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 4px;">Zentrum X</label>
+                  <input type="number" id="zoneInputX" placeholder="z.B. 3700" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: #fff;">
+                </div>
+                <div>
+                  <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 4px;">Zentrum Z</label>
+                  <input type="number" id="zoneInputZ" placeholder="z.B. 1270" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: #fff;">
+                </div>
+              </div>
+              <div>
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 4px;">Radius in Blöcken (z.B. 250)</label>
+                <input type="number" id="zoneInputRadius" placeholder="250" value="250" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: #fff;">
+              </div>
+              <div>
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 4px;">GitHub Personal Access Token (PAT) zum Speichern</label>
+                <input type="password" id="zoneInputToken" placeholder="github_pat_..." style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: #fff;">
+              </div>
+              <button id="btnSaveZone" style="padding: 12px; background: var(--accent-blue); border: none; border-radius: var(--radius-sm); color: #fff; font-weight: 600; cursor: pointer; margin-top: 8px;">
+                💾 Zone speichern & auf GitHub aktualisieren
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. TAB: SETUP & GITHUB INSTRUCTIONS -->
       <section class="tab-content" id="tabSetup">
         <div class="setup-guide-card">
           <h2>🚀 Hosting & Synchronisations-Anleitung</h2>
