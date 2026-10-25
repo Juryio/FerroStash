@@ -1,5 +1,14 @@
 {
-  "zones": [],
+  "zones": [
+    {
+      "id": "zone-1792950014064",
+      "name": "Ferro Base",
+      "dimension": "minecraft:overworld",
+      "centerX": 3630,
+      "centerZ": 1275,
+      "radius": 400
+    }
+  ],
   "privateContainers": [
     "minecraft:overworld:3632_85_1271",
     "minecraft:overworld:3446_164_1071",
