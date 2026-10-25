@@ -1,5 +1,11 @@
 {
   "zones": [],
   "privateContainers": [],
-  "explicitClanContainers": []
+  "explicitClanContainers": [],
+  "blacklistedTitles": [
+    "inventory",
+    "enderchest",
+    "shop"
+  ],
+  "resetTimestamp": 0
 }

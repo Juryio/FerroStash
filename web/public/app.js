@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initSearchAndFilters();
   initModal();
+  initAdminTokenControls();
   initZoneControls();
   initBlacklistControls();
   initResetControls();
@@ -565,12 +566,215 @@ function formatTimeAgo(timestamp) {
   return `vor ${days} Tagen`;
 }
 
+// ================= CLAN ADMIN & GITHUB TOKEN MANAGEMENT =================
+
+function getRepoInfo() {
+  let owner = 'Juryio';
+  let repo = 'FerroStash';
+  if (window.location.hostname.includes('github.io')) {
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    if (parts.length > 0) {
+      owner = window.location.hostname.split('.')[0];
+      repo = parts[0];
+    }
+  }
+  return { owner, repo };
+}
+
+function getAdminGithubToken() {
+  const input = document.getElementById('adminGithubToken');
+  let token = (input && input.value.trim()) || localStorage.getItem('fs_github_token') || '';
+  if (token) {
+    localStorage.setItem('fs_github_token', token);
+  }
+  return token;
+}
+
+function updateTokenStatusBadge(hasToken) {
+  const badge = document.getElementById('tokenStatusBadge');
+  if (!badge) return;
+  if (hasToken) {
+    badge.textContent = '🟢 Token aktiv & gespeichert';
+    badge.style.background = 'rgba(16, 185, 129, 0.2)';
+    badge.style.color = '#6ee7b7';
+    badge.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+  } else {
+    badge.textContent = '🔴 Kein Token hinterlegt';
+    badge.style.background = 'rgba(239, 68, 68, 0.2)';
+    badge.style.color = '#fca5a5';
+    badge.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+  }
+}
+
+function requireAdminToken() {
+  const token = getAdminGithubToken();
+  if (!token) {
+    showToast('⚠️ Bitte zuerst den GitHub Admin-Token oben eintragen!');
+    const input = document.getElementById('adminGithubToken');
+    if (input) {
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      input.focus();
+      input.style.borderColor = '#ef4444';
+      input.style.boxShadow = '0 0 14px rgba(239, 68, 68, 0.6)';
+      setTimeout(() => {
+        input.style.borderColor = 'var(--border-color)';
+        input.style.boxShadow = 'none';
+      }, 3500);
+    }
+    return null;
+  }
+  return token;
+}
+
+function initAdminTokenControls() {
+  const input = document.getElementById('adminGithubToken');
+  const btnSave = document.getElementById('btnSaveAdminToken');
+  const btnClear = document.getElementById('btnClearAdminToken');
+  const btnToggle = document.getElementById('btnToggleTokenVisibility');
+
+  const savedToken = localStorage.getItem('fs_github_token') || '';
+  if (input) {
+    input.value = savedToken;
+    updateTokenStatusBadge(Boolean(savedToken));
+
+    input.addEventListener('input', () => {
+      const val = input.value.trim();
+      if (val) {
+        localStorage.setItem('fs_github_token', val);
+        updateTokenStatusBadge(true);
+      } else {
+        localStorage.removeItem('fs_github_token');
+        updateTokenStatusBadge(false);
+      }
+    });
+  }
+
+  if (btnSave && input) {
+    btnSave.addEventListener('click', () => {
+      const val = input.value.trim();
+      if (!val) {
+        alert('Bitte gib zuerst einen gültigen GitHub Personal Access Token (PAT) ein.');
+        input.focus();
+        return;
+      }
+      localStorage.setItem('fs_github_token', val);
+      updateTokenStatusBadge(true);
+      showToast('🔑 GitHub Token sicher im Browser gespeichert!');
+    });
+  }
+
+  if (btnClear && input) {
+    btnClear.addEventListener('click', () => {
+      if (confirm('Möchtest du den gespeicherten GitHub Token aus dem Browser entfernen?')) {
+        localStorage.removeItem('fs_github_token');
+        input.value = '';
+        updateTokenStatusBadge(false);
+        showToast('Token gelöscht.');
+      }
+    });
+  }
+
+  if (btnToggle && input) {
+    btnToggle.addEventListener('click', () => {
+      if (input.type === 'password') {
+        input.type = 'text';
+        btnToggle.textContent = '🔒';
+        btnToggle.title = 'Token verbergen';
+      } else {
+        input.type = 'password';
+        btnToggle.textContent = '👁️';
+        btnToggle.title = 'Token anzeigen';
+      }
+    });
+  }
+}
+
+async function pushFileToGitHub(filePath, contentStr, commitMessage, token) {
+  const { owner, repo } = getRepoInfo();
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
+  const authHeader = `Bearer ${token}`;
+
+  let sha = null;
+  try {
+    const getRes = await fetch(apiUrl, {
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': authHeader
+      }
+    });
+    if (getRes.ok) {
+      const data = await getRes.json();
+      sha = data.sha;
+    }
+  } catch (e) {
+    console.warn(`Could not fetch sha for ${filePath}:`, e);
+  }
+
+  const contentBase64 = btoa(unescape(encodeURIComponent(contentStr)));
+  const payload = {
+    message: commitMessage,
+    content: contentBase64,
+    branch: 'main'
+  };
+  if (sha) payload.sha = sha;
+
+  return await fetch(apiUrl, {
+    method: 'PUT',
+    headers: {
+      'Accept': 'application/vnd.github.v3+json',
+      'Authorization': authHeader,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+async function saveSettingsToGitHub() {
+  const token = requireAdminToken();
+  if (!token) return false;
+
+  showToast('Synchronisiere Einstellungen mit GitHub...');
+
+  try {
+    const contentStr = JSON.stringify(clanSettings, null, 2);
+    const commitMsg = 'Update clan settings via Web UI';
+
+    // Push to data/clan_settings.json and web/data/clan_settings.json
+    const res1 = await pushFileToGitHub('data/clan_settings.json', contentStr, commitMsg, token);
+    const res2 = await pushFileToGitHub('web/data/clan_settings.json', contentStr, commitMsg, token);
+
+    const ok = (res1 && res1.ok) || (res2 && res2.ok);
+    if (ok) {
+      showToast('✅ Clan-Einstellungen erfolgreich auf GitHub gespeichert!');
+      return true;
+    } else {
+      const failedRes = (res1 && !res1.ok) ? res1 : res2;
+      const status = failedRes ? failedRes.status : 500;
+      let errorDetail = 'Token ungültig oder unzureichende Berechtigungen.';
+      if (status === 401) errorDetail = 'Token ungültig oder abgelaufen.';
+      if (status === 403) errorDetail = 'Fehlende Schreibrechte im Repository (Contents: Read and write erforderlich).';
+      if (status === 404) errorDetail = 'Repository nicht gefunden oder Token hat keinen Zugriff darauf.';
+
+      showToast(`⚠️ GitHub-Fehler (${status}): ${errorDetail}`);
+      alert(`Fehler beim Speichern auf GitHub (HTTP ${status}):\n${errorDetail}\n\nBitte überprüfe deinen GitHub Personal Access Token (PAT) und die Repository-Rechte.`);
+      return false;
+    }
+  } catch (err) {
+    console.error('saveSettingsToGitHub error:', err);
+    showToast('⚠️ Netzwerkfehler bei GitHub-Verbindung');
+    return false;
+  }
+}
+
 // ================= CLAN ZONES MANAGEMENT =================
 
 function initZoneControls() {
   const btnSave = document.getElementById('btnSaveZone');
   if (btnSave) {
     btnSave.addEventListener('click', async () => {
+      const token = requireAdminToken();
+      if (!token) return;
+
       const name = document.getElementById('zoneInputName').value.trim() || 'Hauptbasis';
       const dim = document.getElementById('zoneInputDim').value;
       const x = parseInt(document.getElementById('zoneInputX').value, 10);
@@ -592,14 +796,19 @@ function initZoneControls() {
         radius: radius
       };
 
+      const prevZones = [...clanSettings.zones];
       clanSettings.zones.push(newZone);
-      await saveSettingsToGitHub();
-      renderZones();
 
-      // Clear input fields
-      document.getElementById('zoneInputName').value = '';
-      document.getElementById('zoneInputX').value = '';
-      document.getElementById('zoneInputZ').value = '';
+      const ok = await saveSettingsToGitHub();
+      if (ok) {
+        renderZones();
+        document.getElementById('zoneInputName').value = '';
+        document.getElementById('zoneInputX').value = '';
+        document.getElementById('zoneInputZ').value = '';
+      } else {
+        clanSettings.zones = prevZones;
+        renderZones();
+      }
     });
   }
 }
@@ -643,74 +852,26 @@ function renderZones() {
   // Attach delete handlers
   container.querySelectorAll('.btn-delete-zone').forEach(btn => {
     btn.addEventListener('click', async (e) => {
+      const token = requireAdminToken();
+      if (!token) return;
+
       const idx = parseInt(e.target.getAttribute('data-idx'), 10);
       if (confirm(`Möchtest du diese Zone wirklich entfernen?`)) {
+        const prevZones = [...clanSettings.zones];
         clanSettings.zones.splice(idx, 1);
-        await saveSettingsToGitHub();
-        renderZones();
+        const ok = await saveSettingsToGitHub();
+        if (ok) {
+          renderZones();
+        } else {
+          clanSettings.zones = prevZones;
+          renderZones();
+        }
       }
     });
   });
 }
 
-async function saveSettingsToGitHub() {
-  const tokenInput = document.getElementById('zoneInputToken');
-  const token = (tokenInput && tokenInput.value.trim()) || localStorage.getItem('fs_github_token');
-  if (!token) {
-    alert('Bitte trage unten deinen GitHub Personal Access Token (PAT) ein, um die Zone zu speichern.');
-    return;
-  }
-  localStorage.setItem('fs_github_token', token);
-
-  showToast('Aktualisiere Zonen auf GitHub...');
-
-  try {
-    const owner = 'Juryio';
-    const repo = 'FerroStash';
-    const path = 'data/clan_settings.json';
-    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
-
-    // 1. Get SHA of existing file
-    let sha = null;
-    const getRes = await fetch(apiUrl, {
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'Authorization': `token ${token}`
-      }
-    });
-    if (getRes.ok) {
-      const data = await getRes.json();
-      sha = data.sha;
-    }
-
-    // 2. Put updated content
-    const contentStr = JSON.stringify(clanSettings, null, 2);
-    const contentBase64 = btoa(unescape(encodeURIComponent(contentStr)));
-
-    const putRes = await fetch(apiUrl, {
-      method: 'PUT',
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'Authorization': `token ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        message: 'Update clan zones via Web UI',
-        content: contentBase64,
-        sha: sha
-      })
-    });
-
-    if (putRes.ok) {
-      showToast('✅ Clan-Einstellungen erfolgreich auf GitHub gespeichert!');
-    } else {
-      showToast('⚠️ Fehler beim Speichern: Token/Rechte prüfen.');
-    }
-  } catch (err) {
-    console.error('Zone save error', err);
-    showToast('Fehler bei GitHub-Verbindung');
-  }
-}
+// ================= BLACKLIST MANAGEMENT =================
 
 function initBlacklistControls() {
   const btnAdd = document.getElementById('btnAddBlacklist');
@@ -721,15 +882,31 @@ function initBlacklistControls() {
       const val = input.value.trim().toLowerCase();
       if (!val) return;
 
+      const token = requireAdminToken();
+      if (!token) return;
+
       if (!clanSettings.blacklistedTitles) {
         clanSettings.blacklistedTitles = ['inventory', 'enderchest', 'shop'];
       }
 
-      if (!clanSettings.blacklistedTitles.includes(val)) {
-        clanSettings.blacklistedTitles.push(val);
-        await saveSettingsToGitHub();
+      if (clanSettings.blacklistedTitles.includes(val)) {
+        showToast(`"${val}" ist bereits in der Blacklist.`);
+        input.value = '';
+        return;
+      }
+
+      const prevList = [...clanSettings.blacklistedTitles];
+      clanSettings.blacklistedTitles.push(val);
+
+      showToast(`Speichere "${val}" auf GitHub...`);
+      const ok = await saveSettingsToGitHub();
+      if (ok) {
         renderBlacklist();
         input.value = '';
+        showToast(`✅ "${val}" zur Blacklist hinzugefügt!`);
+      } else {
+        clanSettings.blacklistedTitles = prevList;
+        renderBlacklist();
       }
     });
 
@@ -759,69 +936,53 @@ function renderBlacklist() {
 
   container.querySelectorAll('.btn-remove-blacklist').forEach(btn => {
     btn.addEventListener('click', async (e) => {
+      const token = requireAdminToken();
+      if (!token) return;
+
       const idx = parseInt(e.target.getAttribute('data-idx'), 10);
-      if (!clanSettings.blacklistedTitles) return;
+      if (!clanSettings.blacklistedTitles || !clanSettings.blacklistedTitles[idx]) return;
+
+      const word = clanSettings.blacklistedTitles[idx];
+      const prevList = [...clanSettings.blacklistedTitles];
       clanSettings.blacklistedTitles.splice(idx, 1);
-      await saveSettingsToGitHub();
-      renderBlacklist();
+
+      showToast(`Entferne "${word}" von GitHub...`);
+      const ok = await saveSettingsToGitHub();
+      if (ok) {
+        renderBlacklist();
+        showToast(`✅ "${word}" aus Blacklist entfernt!`);
+      } else {
+        clanSettings.blacklistedTitles = prevList;
+        renderBlacklist();
+      }
     });
   });
 }
+
+// ================= GLOBAL RESET MANAGEMENT =================
 
 function initResetControls() {
   const btnReset = document.getElementById('btnGlobalReset');
   if (btnReset) {
     btnReset.addEventListener('click', async () => {
+      const token = requireAdminToken();
+      if (!token) return;
+
       const confirmMsg = "Bist du dir absolut sicher?\n\nDies setzt das gesamte Clan-Lager auf 0 zurück, leert die vault_data.json auf GitHub und weist alle Mod-Clients an, ihren lokalen Kisten-Cache sofort zu löschen.";
       if (!confirm(confirmMsg)) return;
-
-      const tokenInput = document.getElementById('zoneInputToken');
-      const token = (tokenInput && tokenInput.value.trim()) || localStorage.getItem('fs_github_token');
-      if (!token) {
-        alert('Bitte trage oben deinen GitHub Personal Access Token (PAT) ein, um den Reset auf GitHub auszuführen.');
-        return;
-      }
-      localStorage.setItem('fs_github_token', token);
 
       showToast('Führe globalen Reset auf GitHub aus...');
 
       try {
-        const owner = 'Juryio';
-        const repo = 'FerroStash';
+        const emptyVaultJson = '[]';
 
-        // 1. Reset vault_data.json to []
-        const vaultPath = 'data/vault_data.json';
-        const vaultUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${vaultPath}`;
-        let vaultSha = null;
-        try {
-          const vRes = await fetch(vaultUrl, {
-            headers: { 'Accept': 'application/vnd.github.v3+json', 'Authorization': `token ${token}` }
-          });
-          if (vRes.ok) {
-            const vData = await vRes.json();
-            vaultSha = vData.sha;
-          }
-        } catch (e) {}
+        // 1. Reset vault_data.json on both paths
+        await pushFileToGitHub('data/vault_data.json', emptyVaultJson, 'Global clan vault reset to 0 [by Leader]', token);
+        await pushFileToGitHub('web/data/vault_data.json', emptyVaultJson, 'Global clan vault reset to 0 [by Leader]', token);
 
-        const emptyVaultContent = btoa('[]');
-        await fetch(vaultUrl, {
-          method: 'PUT',
-          headers: {
-            'Accept': 'application/vnd.github.v3+json',
-            'Authorization': `token ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            message: 'Global clan vault reset to 0 [by Leader]',
-            content: emptyVaultContent,
-            sha: vaultSha,
-            branch: 'main'
-          })
-        });
-
-        // 2. Update resetTimestamp in clan_settings.json so all active clients wipe their local cache
+        // 2. Update resetTimestamp in clan_settings.json so all clients wipe local cache
         clanSettings.resetTimestamp = Date.now();
-        await saveSettingsToGitHub();
+        const settingsOk = await saveSettingsToGitHub();
 
         // 3. Immediately clear website state
         allContainers = [];
@@ -829,7 +990,11 @@ function initResetControls() {
         renderInventory();
         renderChests();
 
-        showToast('✅ Lagerbestand wurde erfolgreich auf 0 zurückgesetzt!');
+        if (settingsOk) {
+          showToast('✅ Lagerbestand wurde erfolgreich auf 0 zurückgesetzt!');
+        } else {
+          showToast('⚠️ Reset teilweise abgeschlossen (Prüfe Token-Berechtigungen).');
+        }
       } catch (err) {
         console.error('Reset failed:', err);
         alert('Fehler beim Reset: ' + err.message);
