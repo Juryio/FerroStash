@@ -159,10 +159,10 @@ function mergeSettings(newObj) {
     clanSettings.blacklistedTitles = ['inventory', 'enderchest', 'shop'];
   }
 
-  // 3. Reset Timestamp: keep latest
-  if (newObj.resetTimestamp) {
-    clanSettings.resetTimestamp = Math.max(clanSettings.resetTimestamp || 0, newObj.resetTimestamp);
-  }
+  // 3. Reset Timestamp: keep latest (also checking admin localStorage persistence)
+  const localStoredReset = Number(localStorage.getItem('fs_clan_reset_timestamp') || 0);
+  const remoteReset = Number(newObj.resetTimestamp || 0);
+  clanSettings.resetTimestamp = Math.max(clanSettings.resetTimestamp || 0, remoteReset, localStoredReset);
 
   // 4. Private containers filter
   if (Array.isArray(newObj.privateContainers)) {
@@ -249,8 +249,9 @@ async function fetchClanData() {
       }
 
       // 4. Global Reset Protection: Filter out any containers from before the reset!
-      if (clanSettings.resetTimestamp && clanSettings.resetTimestamp > 0) {
-        allContainers = allContainers.filter(c => c.lastOpenedTimestamp && c.lastOpenedTimestamp > clanSettings.resetTimestamp);
+      const effectiveReset = Math.max(Number(clanSettings.resetTimestamp || 0), Number(localStorage.getItem('fs_clan_reset_timestamp') || 0));
+      if (effectiveReset > 0) {
+        allContainers = allContainers.filter(c => c.lastOpenedTimestamp && Number(c.lastOpenedTimestamp) > effectiveReset);
       }
 
       updateSyncStatus(true, 'ONLINE (GitHub Live)');
@@ -1027,8 +1028,10 @@ function initResetControls() {
           pushFileToGitHub('web/data/vault_data.json', emptyVaultJson, 'Global clan vault reset to 0 [by Leader]', token).catch(() => null);
         }
 
-        // 2. Update resetTimestamp in clan_settings.json so all clients wipe local cache
-        clanSettings.resetTimestamp = Date.now();
+        // 2. Update resetTimestamp in clan_settings.json and localStorage
+        const nowTs = Date.now();
+        clanSettings.resetTimestamp = nowTs;
+        localStorage.setItem('fs_clan_reset_timestamp', String(nowTs));
         const settingsOk = await saveSettingsToGitHub();
 
         // 3. Immediately clear website state
