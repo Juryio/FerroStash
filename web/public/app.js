@@ -30,6 +30,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initSearchAndFilters();
   initModal();
   initZoneControls();
+  initBlacklistControls();
+  initResetControls();
   fetchClanData();
 
   // Periodic live refresh every 6 seconds
@@ -57,6 +59,7 @@ function initTabs() {
       if (target === 'zones') {
         document.getElementById('tabZones').classList.add('active');
         renderZones();
+        renderBlacklist();
       }
       if (target === 'setup') document.getElementById('tabSetup').classList.add('active');
     });
@@ -268,11 +271,16 @@ function renderInventory() {
   const itemMap = new Map();
 
   allContainers.forEach(container => {
-    // Dimension filter
-    if (currentFilter !== 'all' && container.dimension !== currentFilter) return;
+    // Dimension & category filter
+    if (currentFilter === 'enchanted_books') {
+      // allow all dimensions through, filter below by item
+    } else if (currentFilter !== 'all' && container.dimension !== currentFilter) {
+      return;
+    }
 
     (container.items || []).forEach(item => {
       if (!item.itemId || item.count <= 0) return;
+      if (currentFilter === 'enchanted_books' && item.itemId !== 'minecraft:enchanted_book') return;
 
       const enchantments = item.enchantments || [];
       const hasEnchants = enchantments.length > 0;
@@ -694,12 +702,138 @@ async function saveSettingsToGitHub() {
     });
 
     if (putRes.ok) {
-      showToast('✅ Clan-Zone erfolgreich auf GitHub gespeichert!');
+      showToast('✅ Clan-Einstellungen erfolgreich auf GitHub gespeichert!');
     } else {
       showToast('⚠️ Fehler beim Speichern: Token/Rechte prüfen.');
     }
   } catch (err) {
     console.error('Zone save error', err);
     showToast('Fehler bei GitHub-Verbindung');
+  }
+}
+
+function initBlacklistControls() {
+  const btnAdd = document.getElementById('btnAddBlacklist');
+  const input = document.getElementById('blacklistInput');
+
+  if (btnAdd && input) {
+    btnAdd.addEventListener('click', async () => {
+      const val = input.value.trim().toLowerCase();
+      if (!val) return;
+
+      if (!clanSettings.blacklistedTitles) {
+        clanSettings.blacklistedTitles = ['inventory', 'enderchest', 'shop'];
+      }
+
+      if (!clanSettings.blacklistedTitles.includes(val)) {
+        clanSettings.blacklistedTitles.push(val);
+        await saveSettingsToGitHub();
+        renderBlacklist();
+        input.value = '';
+      }
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        btnAdd.click();
+      }
+    });
+  }
+}
+
+function renderBlacklist() {
+  const container = document.getElementById('blacklistItemsContainer');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const list = (clanSettings && clanSettings.blacklistedTitles) || ['inventory', 'enderchest', 'shop'];
+  list.forEach((word, idx) => {
+    const tag = document.createElement('span');
+    tag.style.cssText = 'background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 4px 10px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;';
+    tag.innerHTML = `
+      <span>🚫 ${word}</span>
+      <button class="btn-remove-blacklist" data-idx="${idx}" style="background: none; border: none; color: #fca5a5; cursor: pointer; font-weight: bold; padding: 0 2px;">✕</button>
+    `;
+    container.appendChild(tag);
+  });
+
+  container.querySelectorAll('.btn-remove-blacklist').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const idx = parseInt(e.target.getAttribute('data-idx'), 10);
+      if (!clanSettings.blacklistedTitles) return;
+      clanSettings.blacklistedTitles.splice(idx, 1);
+      await saveSettingsToGitHub();
+      renderBlacklist();
+    });
+  });
+}
+
+function initResetControls() {
+  const btnReset = document.getElementById('btnGlobalReset');
+  if (btnReset) {
+    btnReset.addEventListener('click', async () => {
+      const confirmMsg = "Bist du dir absolut sicher?\n\nDies setzt das gesamte Clan-Lager auf 0 zurück, leert die vault_data.json auf GitHub und weist alle Mod-Clients an, ihren lokalen Kisten-Cache sofort zu löschen.";
+      if (!confirm(confirmMsg)) return;
+
+      const tokenInput = document.getElementById('zoneInputToken');
+      const token = (tokenInput && tokenInput.value.trim()) || localStorage.getItem('fs_github_token');
+      if (!token) {
+        alert('Bitte trage oben deinen GitHub Personal Access Token (PAT) ein, um den Reset auf GitHub auszuführen.');
+        return;
+      }
+      localStorage.setItem('fs_github_token', token);
+
+      showToast('Führe globalen Reset auf GitHub aus...');
+
+      try {
+        const owner = 'Juryio';
+        const repo = 'FerroStash';
+
+        // 1. Reset vault_data.json to []
+        const vaultPath = 'data/vault_data.json';
+        const vaultUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${vaultPath}`;
+        let vaultSha = null;
+        try {
+          const vRes = await fetch(vaultUrl, {
+            headers: { 'Accept': 'application/vnd.github.v3+json', 'Authorization': `token ${token}` }
+          });
+          if (vRes.ok) {
+            const vData = await vRes.json();
+            vaultSha = vData.sha;
+          }
+        } catch (e) {}
+
+        const emptyVaultContent = btoa('[]');
+        await fetch(vaultUrl, {
+          method: 'PUT',
+          headers: {
+            'Accept': 'application/vnd.github.v3+json',
+            'Authorization': `token ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            message: 'Global clan vault reset to 0 [by Leader]',
+            content: emptyVaultContent,
+            sha: vaultSha,
+            branch: 'main'
+          })
+        });
+
+        // 2. Update resetTimestamp in clan_settings.json so all active clients wipe their local cache
+        clanSettings.resetTimestamp = Date.now();
+        await saveSettingsToGitHub();
+
+        // 3. Immediately clear website state
+        allContainers = [];
+        updateStats();
+        renderInventory();
+        renderChests();
+
+        showToast('✅ Lagerbestand wurde erfolgreich auf 0 zurückgesetzt!');
+      } catch (err) {
+        console.error('Reset failed:', err);
+        alert('Fehler beim Reset: ' + err.message);
+      }
+    });
   }
 }
