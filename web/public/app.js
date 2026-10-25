@@ -274,22 +274,39 @@ function renderInventory() {
     (container.items || []).forEach(item => {
       if (!item.itemId || item.count <= 0) return;
 
-      const title = item.customName && item.customName.trim() ? item.customName : formatItemName(item.itemId);
+      const enchantments = item.enchantments || [];
+      const hasEnchants = enchantments.length > 0;
+      let title = item.customName && item.customName.trim() ? item.customName : formatItemName(item.itemId);
+
+      if (item.itemId === 'minecraft:enchanted_book') {
+        if (hasEnchants) {
+          title = enchantments.join(', ');
+        } else {
+          title = 'Enchanted Book';
+        }
+      }
+
+      // Group by itemId and enchantments so different enchanted books are separate cards
+      const groupKey = hasEnchants ? `${item.itemId}#${enchantments.join(';')}` : item.itemId;
+
+      const enchSearch = enchantments.join(' ').toLowerCase();
       const matchesSearch = !searchQuery
         || item.itemId.toLowerCase().includes(searchQuery)
         || title.toLowerCase().includes(searchQuery)
+        || enchSearch.includes(searchQuery)
         || (container.customTitle && container.customTitle.toLowerCase().includes(searchQuery));
 
       if (matchesSearch) {
-        if (!itemMap.has(item.itemId)) {
-          itemMap.set(item.itemId, {
+        if (!itemMap.has(groupKey)) {
+          itemMap.set(groupKey, {
             itemId: item.itemId,
             displayName: title,
+            enchantments: enchantments,
             totalCount: 0,
             containers: []
           });
         }
-        const entry = itemMap.get(item.itemId);
+        const entry = itemMap.get(groupKey);
         entry.totalCount += item.count;
         entry.containers.push({
           container,
@@ -316,7 +333,19 @@ function renderInventory() {
     const card = document.createElement('div');
     card.className = 'item-card';
 
-    const emoji = ITEM_EMOJIS[entry.itemId] || '📦';
+    let emoji = ITEM_EMOJIS[entry.itemId] || '📦';
+    if (entry.itemId === 'minecraft:enchanted_book') {
+      emoji = '📖';
+    }
+
+    let enchTagsHtml = '';
+    if (entry.enchantments && entry.enchantments.length > 0) {
+      enchTagsHtml = `
+        <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
+          ${entry.enchantments.map(e => `<span style="background: rgba(168, 85, 247, 0.15); color: #d8b4fe; border: 1px solid rgba(168, 85, 247, 0.3); font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; font-weight: 600;">✦ ${e}</span>`).join('')}
+        </div>
+      `;
+    }
 
     card.innerHTML = `
       <div class="item-card-header">
@@ -324,6 +353,7 @@ function renderInventory() {
         <div class="item-name-block">
           <span class="item-title">${entry.displayName}</span>
           <span class="item-id">${entry.itemId}</span>
+          ${enchTagsHtml}
         </div>
       </div>
       <div class="item-card-stats">
@@ -458,6 +488,18 @@ function openItemDetailsModal(entry) {
   title.textContent = entry.displayName;
   count.textContent = `x${entry.totalCount.toLocaleString()}`;
 
+  let enchHtml = '';
+  if (entry.enchantments && entry.enchantments.length > 0) {
+    enchHtml = `
+      <div style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">
+        <div style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: #c084fc; font-weight: 700; margin-bottom: 8px;">Verzauberungen:</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+          ${entry.enchantments.map(e => `<span style="background: rgba(168, 85, 247, 0.25); color: #f3e8ff; padding: 4px 10px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; border: 1px solid rgba(168, 85, 247, 0.45);">✦ ${e}</span>`).join('')}
+        </div>
+      </div>
+    `;
+  }
+
   let locationsHtml = '<div style="font-weight: 600; margin-bottom: 8px;">Kisten-Standorte im Clan-Territorium:</div>';
 
   entry.containers.forEach(match => {
@@ -476,7 +518,7 @@ function openItemDetailsModal(entry) {
     `;
   });
 
-  body.innerHTML = locationsHtml;
+  body.innerHTML = enchHtml + locationsHtml;
   backdrop.classList.add('open');
 }
 
