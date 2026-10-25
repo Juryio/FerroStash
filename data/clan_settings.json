@@ -1,1 +1,17 @@
-{"zones":[],"privateContainers":["minecraft:overworld:3632_85_1271","minecraft:overworld:3446_164_1071","minecraft:overworld:3695_82_1277","minecraft:overworld:3689_83_1266","minecraft:overworld:3632_79_1275"],"explicitClanContainers":["minecraft:overworld:3700_85_1270","minecraft:overworld:3680_72_1351","minecraft:overworld:3648_73_1375"],"blacklistedTitles":["inventory","enderchest","shop"],"resetTimestamp":1792949245028}
+{
+  "zones": [],
+  "privateContainers": [
+    "minecraft:overworld:3632_85_1271",
+    "minecraft:overworld:3446_164_1071",
+    "minecraft:overworld:3695_82_1277",
+    "minecraft:overworld:3689_83_1266",
+    "minecraft:overworld:3632_79_1275"
+  ],
+  "blacklistedTitles": [
+    "inventory",
+    "enderchest",
+    "shop",
+    "voteurl"
+  ],
+  "resetTimestamp": 1792949245028
+}
