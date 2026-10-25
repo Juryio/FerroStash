@@ -1,5 +1,1 @@
-{
-  "zones": [],
-  "privateContainers": [],
-  "explicitClanContainers": []
-}
+{"zones":[{"id":"zone-basis","name":"Hauptbasis","dimension":"minecraft:overworld","centerX":3700,"centerZ":1270,"radius":350}],"privateContainers":[],"explicitClanContainers":[]}
