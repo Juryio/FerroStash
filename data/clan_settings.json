@@ -1,12 +1,12 @@
 {
   "zones": [
     {
-      "id": "zone-1792941035302",
-      "name": "test",
+      "id": "zone-basis",
+      "name": "Hauptbasis",
       "dimension": "minecraft:overworld",
-      "centerX": 1,
-      "centerZ": 1,
-      "radius": 250
+      "centerX": 3700,
+      "centerZ": 1270,
+      "radius": 350
     }
   ],
   "privateContainers": [
