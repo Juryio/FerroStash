@@ -257,6 +257,9 @@ async function fetchClanData() {
       updateSyncStatus(true, 'ONLINE (GitHub Live)');
     }
 
+    // Deduplicate double chests to prevent double counting
+    allContainers = deduplicateContainers(allContainers);
+
     updateStats();
     renderInventory();
     renderAuditLog();
@@ -267,6 +270,89 @@ async function fetchClanData() {
     console.warn('[FerroStash] Fetch error, retrying...', err);
     updateSyncStatus(false, 'VERBINDUNG WIRD GESUCHT');
   }
+}
+
+function deduplicateContainers(containers) {
+  if (!Array.isArray(containers) || containers.length <= 1) return containers || [];
+
+  const toRemove = new Set();
+  for (let i = 0; i < containers.length; i++) {
+    const c1 = containers[i];
+    if (!c1 || toRemove.has(c1.id)) continue;
+
+    for (let j = i + 1; j < containers.length; j++) {
+      const c2 = containers[j];
+      if (!c2 || toRemove.has(c2.id)) continue;
+
+      if (isDoubleChestPairJs(c1, c2)) {
+        let keep = c1;
+        let discard = c2;
+        if (c1.lastOpenedTimestamp !== c2.lastOpenedTimestamp) {
+          keep = (c1.lastOpenedTimestamp || 0) > (c2.lastOpenedTimestamp || 0) ? c1 : c2;
+          discard = keep === c1 ? c2 : c1;
+        } else {
+          const c1Smaller = c1.x < c2.x || (c1.x === c2.x && c1.z < c2.z);
+          keep = c1Smaller ? c1 : c2;
+          discard = keep === c1 ? c2 : c1;
+        }
+        keep.type = 'DOUBLE_CHEST';
+        toRemove.add(discard.id || `${discard.dimension}:${discard.x}_${discard.y}_${discard.z}`);
+      }
+    }
+  }
+
+  return containers.filter(c => {
+    const id = c.id || `${c.dimension}:${c.x}_${c.y}_${c.z}`;
+    return !toRemove.has(id) && !toRemove.has(c.id);
+  });
+}
+
+function isDoubleChestPairJs(c1, c2) {
+  if (!c1 || !c2 || !c1.dimension || !c2.dimension) return false;
+  if (c1.dimension !== c2.dimension) return false;
+  if (c1.y !== c2.y) return false;
+
+  const dx = Math.abs(c1.x - c2.x);
+  const dz = Math.abs(c1.z - c2.z);
+  if (dx + dz !== 1) return false;
+
+  const isLarge1 = isLargeChestCandidateJs(c1);
+  const isLarge2 = isLargeChestCandidateJs(c2);
+  if (!isLarge1 || !isLarge2) return false;
+
+  return hasItemOverlapJs(c1, c2);
+}
+
+function isLargeChestCandidateJs(c) {
+  if (c.type === 'DOUBLE_CHEST') return true;
+  const title = (c.customTitle || '').toLowerCase();
+  if (title.includes('large chest') || title.includes('große truhe') || title.includes('grosse truhe')) return true;
+  if (Array.isArray(c.items)) {
+    for (const item of c.items) {
+      if (item.slot >= 27) return true;
+    }
+  }
+  return false;
+}
+
+function hasItemOverlapJs(c1, c2) {
+  const items1 = c1.items || [];
+  const items2 = c2.items || [];
+  if (items1.length === 0 || items2.length === 0) return true;
+
+  const slots1 = new Map();
+  items1.forEach(it => slots1.set(it.slot, it.itemId));
+
+  let matching = 0;
+  items2.forEach(it => {
+    if (slots1.get(it.slot) === it.itemId) {
+      matching++;
+    }
+  });
+
+  const minItems = Math.min(items1.length, items2.length);
+  if (minItems === 0) return true;
+  return (matching / minItems) >= 0.25 || matching >= 5;
 }
 
 function updateSyncStatus(isLive, text) {
