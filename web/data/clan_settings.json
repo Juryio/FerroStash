@@ -12,15 +12,16 @@
   "privateContainers": [
     "minecraft:overworld:3632_85_1271",
     "minecraft:overworld:3446_164_1071",
-    "minecraft:overworld:3695_82_1277",
     "minecraft:overworld:3689_83_1266",
+    "minecraft:overworld:3695_82_1277",
     "minecraft:overworld:3632_79_1275"
   ],
   "blacklistedTitles": [
     "inventory",
     "enderchest",
     "shop",
-    "voteurl"
+    "voteurl",
+    "jej's inventory"
   ],
   "resetTimestamp": 1792951794540
 }
