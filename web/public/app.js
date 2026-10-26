@@ -358,20 +358,29 @@ function renderInventory() {
             displayName: title,
             enchantments: enchantments,
             totalCount: 0,
-            containers: []
+            containersMap: new Map()
           });
         }
         const entry = itemMap.get(groupKey);
         entry.totalCount += item.count;
-        entry.containers.push({
-          container,
-          count: item.count
-        });
+
+        // Group stacks in the same chest together
+        const containerKey = container.id || `${container.dimension || ''}:${container.x},${container.y},${container.z}`;
+        if (!entry.containersMap.has(containerKey)) {
+          entry.containersMap.set(containerKey, {
+            container,
+            count: 0
+          });
+        }
+        entry.containersMap.get(containerKey).count += item.count;
       }
     });
   });
 
-  const sortedItems = Array.from(itemMap.values()).sort((a, b) => b.totalCount - a.totalCount);
+  const sortedItems = Array.from(itemMap.values()).map(entry => {
+    entry.containers = Array.from(entry.containersMap.values()).sort((a, b) => b.count - a.count);
+    return entry;
+  }).sort((a, b) => b.totalCount - a.totalCount);
 
   if (sortedItems.length === 0) {
     const emptyMsg = allContainers.length === 0
@@ -562,11 +571,18 @@ function openItemDetailsModal(entry) {
     const dim = (c.dimension || '').replace('minecraft:', '');
     const coordStr = `${c.x}, ${c.y}, ${c.z}`;
 
+    let stackInfo = '';
+    if (match.count >= 64) {
+      const fullStacks = Math.floor(match.count / 64);
+      const remainder = match.count % 64;
+      stackInfo = remainder > 0 ? ` • ${fullStacks} Stacks + ${remainder}` : ` • ${fullStacks} Stacks`;
+    }
+
     locationsHtml += `
       <div style="background: rgba(10, 14, 23, 0.6); padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; gap: 12px;">
         <div>
-          <div style="font-weight: 700; color: #fff;">${c.customTitle || c.type} <span style="color: var(--accent-gold);">(x${match.count})</span></div>
-          <div style="font-size: 0.82rem; color: var(--text-muted); font-family: var(--font-mono);">${dim} [${c.x}, ${c.y}, ${c.z}] - Zuletzt von ${c.lastOpenedBy}</div>
+          <div style="font-weight: 700; color: #fff;">${c.customTitle || c.type || 'Kiste'} <span style="color: var(--accent-gold);">(x${match.count.toLocaleString()}${stackInfo})</span></div>
+          <div style="font-size: 0.82rem; color: var(--text-muted); font-family: var(--font-mono);">${dim} [${c.x}, ${c.y}, ${c.z}] - Zuletzt von ${c.lastOpenedBy || 'Unbekannt'}</div>
         </div>
         <button class="btn-tp-copy" onclick="copyCoordinates('${coordStr}')">📍 Koordinaten kopieren</button>
       </div>
