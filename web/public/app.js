@@ -524,8 +524,9 @@ function renderChests() {
         <div>👤 Zuletzt geöffnet von: <strong>${c.lastOpenedBy || 'Unbekannt'}</strong> (${formatTimeAgo(c.lastOpenedTimestamp)})</div>
         <div>📦 Lagerbestand: <strong>${totalItemCount} Items</strong> in ${c.items ? c.items.length : 0} Slots</div>
       </div>
-      <div class="chest-actions">
+      <div class="chest-actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
         <button class="btn-tp-copy" onclick="copyCoordinates('${coordStr}')">📍 Koordinaten kopieren</button>
+        <button class="btn-danger-sm" onclick="removeSingleContainer('${c.id || `${c.dimension || 'minecraft:overworld'}:${c.x}_${c.y}_${c.z}`}')" title="Kiste / Inventar dauerhaft aus Clan-Vault löschen und privatisieren">🗑️ Kiste entfernen</button>
       </div>
     `;
 
@@ -584,7 +585,10 @@ function openItemDetailsModal(entry) {
           <div style="font-weight: 700; color: #fff;">${c.customTitle || c.type || 'Kiste'} <span style="color: var(--accent-gold);">(x${match.count.toLocaleString()}${stackInfo})</span></div>
           <div style="font-size: 0.82rem; color: var(--text-muted); font-family: var(--font-mono);">${dim} [${c.x}, ${c.y}, ${c.z}] - Zuletzt von ${c.lastOpenedBy || 'Unbekannt'}</div>
         </div>
-        <button class="btn-tp-copy" onclick="copyCoordinates('${coordStr}')">📍 Koordinaten kopieren</button>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <button class="btn-tp-copy" onclick="copyCoordinates('${coordStr}')">📍 Koordinaten</button>
+          <button class="btn-danger-sm" onclick="removeSingleContainer('${c.id || `${c.dimension || 'minecraft:overworld'}:${c.x}_${c.y}_${c.z}`}')" title="Kiste / Inventar dauerhaft aus Clan-Vault löschen und privatisieren">🗑️ Entfernen</button>
+        </div>
       </div>
     `;
   });
@@ -599,6 +603,76 @@ window.copyCoordinates = function (coords) {
   }).catch(() => {
     prompt('Koordinaten:', coords);
   });
+};
+
+window.removeSingleContainer = async function (containerId) {
+  const token = requireAdminToken();
+  if (!token) return;
+
+  const target = allContainers.find(c => c.id === containerId || `${c.dimension || 'minecraft:overworld'}:${c.x}_${c.y}_${c.z}` === containerId);
+  const cTitle = target ? (target.customTitle || target.type || 'Kiste / Inventar') : 'Kiste / Inventar';
+  const cCoord = target ? `[${target.x}, ${target.y}, ${target.z}]` : '';
+
+  const confirmMsg = `Möchtest du dieses Inventar / diese Kiste wirklich dauerhaft aus dem Clan-Vault entfernen?\n\n"${cTitle}" ${cCoord}\n\n• Wird sofort aus der Web-Ansicht und von GitHub gelöscht.\n• Wird in die Clan-Privatliste eingetragen, damit die Mod es bei allen Clan-Mitgliedern automatisch aus dem Cache löscht.`;
+  if (!confirm(confirmMsg)) return;
+
+  showToast('Entferne Kiste & synchronisiere mit GitHub...');
+
+  try {
+    // 1. Determine IDs to mark private so the mod purges it on every client
+    const idsToPrivatize = new Set();
+    if (containerId) idsToPrivatize.add(containerId);
+    if (target) {
+      if (target.id) idsToPrivatize.add(target.id);
+      idsToPrivatize.add(`${target.dimension || 'minecraft:overworld'}:${target.x}_${target.y}_${target.z}`);
+    }
+
+    if (!clanSettings.privateContainers) {
+      clanSettings.privateContainers = [];
+    }
+    idsToPrivatize.forEach(id => {
+      if (!clanSettings.privateContainers.includes(id)) {
+        clanSettings.privateContainers.push(id);
+      }
+    });
+
+    // 2. Remove container from allContainers
+    allContainers = allContainers.filter(c => {
+      if (c.id && idsToPrivatize.has(c.id)) return false;
+      const genId = `${c.dimension || 'minecraft:overworld'}:${c.x}_${c.y}_${c.z}`;
+      if (idsToPrivatize.has(genId)) return false;
+      return true;
+    });
+
+    // 3. Push updated vault_data.json to GitHub
+    const vaultStr = JSON.stringify(allContainers);
+    const vaultRes = await pushFileToGitHub('data/vault_data.json', vaultStr, `Remove container ${containerId} from Clan Vault`, token);
+    if (vaultRes && vaultRes.ok) {
+      pushFileToGitHub('web/data/vault_data.json', vaultStr, `Remove container ${containerId} from Clan Vault`, token).catch(() => null);
+    }
+
+    // 4. Push updated clan_settings.json to GitHub (ensures clients purge it on sync)
+    const settingsStr = JSON.stringify(clanSettings, null, 2);
+    const settingsRes = await pushFileToGitHub('data/clan_settings.json', settingsStr, `Add ${containerId} to privateContainers`, token);
+    if (settingsRes && settingsRes.ok) {
+      pushFileToGitHub('web/data/clan_settings.json', settingsStr, `Add ${containerId} to privateContainers`, token).catch(() => null);
+    }
+
+    // 5. Update UI immediately
+    updateStats();
+    renderInventory();
+    renderChests();
+
+    const backdrop = document.getElementById('modalBackdrop');
+    if (backdrop && backdrop.classList.contains('open')) {
+      backdrop.classList.remove('open');
+    }
+
+    showToast(`✅ "${cTitle}" wurde erfolgreich entfernt und privatisiert!`);
+  } catch (err) {
+    console.error('Failed to remove container:', err);
+    alert('Fehler beim Entfernen der Kiste: ' + err.message);
+  }
 };
 
 function showToast(msg) {
